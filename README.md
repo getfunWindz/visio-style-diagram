@@ -15,7 +15,13 @@ Visio 风格的软件工程图自动生成器。基于 **draw.io Desktop** + **P
 - **UML 类图** — 类、属性、方法、继承关系
 - **架构图** — 系统组件、服务依赖、接口定义
 - **系统部署图** — 节点拓扑、模块部署
-- **数据流图** — 数据流转、处理节点
+- **数据流图 (DFD)** — 外部实体、加工、数据存储、数据流
+- **程序流程图** — 开始/结束、处理、判断、数据I/O、控制流
+- **N-S 盒图** — 顺序、IF-THEN-ELSE、WHILE-DO、DO-UNTIL
+- **UML 用例图** — 参与者、用例、系统边界、包含/扩展/泛化关系
+- **UML 状态图** — 初始/最终状态、状态、转换、监护条件
+- **UML 时序图** — 对象、生命线、激活条、同步/异步/返回消息
+- **UML 活动图 / 泳道图** — 跨职能流程图、垂直泳道池
 
 ## 核心特性
 
@@ -26,6 +32,8 @@ Visio 风格的软件工程图自动生成器。基于 **draw.io Desktop** + **P
 **CJK 文字优化** — 针对中文/日文渲染特性调整高度公式（HEADER_H=28, ROW_H=20），实体框内文字完整可见不截断
 
 **Visio 原生风格** — 浅灰画布(#EBEBEB)、浅蓝表头(#C2CFF2)、白底实体(#FFFFFF)、灰线连接(#999999)，还原 Visio 经典视觉
+
+**软件工程规范约束** — 严格遵循数据流图、N-S盒图、程序流程图、UML图（用例图/状态图/时序图/活动图）、E-R图的行业标准符号和规则
 
 **导出前校验** — `validate()` 自动遍历所有实体对的 Bounding Box，发现重叠立即告警
 
@@ -539,6 +547,130 @@ step = ly.add_label_in_lane(lane, abs_x, abs_y, 80, 35, 140, 36,
 2. **路由不变** — 跨泳道和泳道内的连接器使用同样的 `add_connector()`，算法自动检测泳道容器为障碍物
 3. **验证警告可忽略** — `validate()` 会报告标签在父泳道内的重叠，这是设计预期
 4. **文字标签无箭头** — 标签本身无连接点，连接器对接到标签的几何中心或指定端口
+
+## 数据流图 (DFD)
+
+按照软件工程规范实现 DFD 四要素：外部实体、加工、数据存储、数据流。
+
+### 元素规范
+
+| 元素 | 方法 | 形状 | 颜色 |
+|------|------|------|------|
+| 外部实体 | `add_dfd_external()` | 圆角矩形 | 填充 #FFF3CD |
+| 加工 | `add_dfd_process()` | 圆形/椭圆 | 白底灰边框，内含编号+名称 |
+| 数据存储 | `add_dfd_store()` | 开口矩形 | 填充 #F5F5F5 |
+| 数据流 | `add_dfd_flow()` | 箭头 | 线色 #666666 |
+
+```python
+e = ly.add_dfd_external(30, 200, 120, 40, '用户')
+p = ly.add_dfd_process(200, 200, 80, '验证登录', '1')
+s = ly.add_dfd_store(350, 200, 120, 50, '用户表')
+ly.add_dfd_flow(e, p, '登录请求')
+ly.add_dfd_flow(p, s, '写入用户信息')
+```
+
+**DFD 分层规则**:
+- 顶层图：整个系统为1个加工
+- 0层图：分解为若干子加工
+- 子图：编号保持父子关系（如 1.1, 1.2）
+
+## 程序流程图
+
+按照软件工程标准符号实现结构化流程图。
+
+```python
+start = ly.add_flow_start_end(200, 20, 120, 40, '开始')
+inp = ly.add_flow_data(200, 90, 140, 40, '输入 n')
+proc = ly.add_flow_process(200, 160, 120, 40, 'sum=0,i=1')
+dec = ly.add_flow_decision(200, 250, 80, 'i<=n?')
+proc2 = ly.add_flow_process(120, 330, 120, 40, 'sum+=i,i++')
+ly.add_flow_arrow(start, inp)
+ly.add_flow_arrow(inp, proc)
+ly.add_flow_arrow(proc, dec)
+ly.add_flow_arrow(dec, proc2, label='是')
+```
+
+| 方法 | 形状 | 说明 |
+|------|------|------|
+| `add_flow_start_end()` | 圆角矩形 | 开始/结束 |
+| `add_flow_process()` | 矩形 | 处理操作 |
+| `add_flow_decision()` | 菱形 | 条件判断 |
+| `add_flow_data()` | 平行四边形 | 数据输入/输出 |
+| `add_flow_arrow()` | 箭头 | 控制流 |
+
+## N-S 盒图 (Nassi-Shneiderman)
+
+按照结构化程序设计原则，全部算法写在一个大框内。
+
+```python
+ly.add_ns_box(50, 50, 400, 300)
+ly.add_ns_ifelse(60, 60, 380, 90, 'x>0?', 'then', 'else')
+ly.add_ns_while(60, 170, 380, 80, 'i<=n?', 'sum+=i; i++')
+ly.add_ns_until(60, 270, 380, 70, 'i>n?', 'sum+=i; i++')
+```
+
+| 方法 | 结构 | 说明 |
+|------|------|------|
+| `add_ns_box()` | 外框 | 程序大容器 |
+| `add_ns_ifelse()` | IF-THEN-ELSE | 选择结构 |
+| `add_ns_while()` | WHILE-DO | 当型循环 |
+| `add_ns_until()` | DO-UNTIL | 直到型循环 |
+
+## UML 用例图
+
+支持参与者、用例、系统边界及4种关系。
+
+```python
+actor = ly.add_uml_actor(50, 200, 40, '用户')
+uc1 = ly.add_uml_use_case(180, 180, 120, 50, '登录')
+uc2 = ly.add_uml_use_case(180, 260, 120, 50, '注册')
+sb = ly.add_uml_system_boundary(150, 100, 300, 300, '系统')
+ly.add_uml_assoc(actor, uc1)       # 关联
+ly.add_uml_include(uc1, uc2)       # 包含
+ly.add_uml_extend(uc1, uc2)        # 扩展
+```
+
+| 方法 | 关系 | 线型 |
+|------|------|------|
+| `add_uml_assoc()` | 关联 | 实线 |
+| `add_uml_generalize()` | 泛化 | 实线+空心三角 |
+| `add_uml_include()` | 包含 | 虚线+`<<include>>` |
+| `add_uml_extend()` | 扩展 | 虚线+`<<extend>>` |
+
+## UML 状态图
+
+实现初始状态、状态、转换（带监护条件）、选择、最终状态。
+
+```python
+s1 = ly.add_uml_state(180, 80, 160, 50, '待审核')
+s2 = ly.add_uml_state(180, 200, 160, 50, '已通过')
+ch = ly.add_uml_choice(260, 145, 50)
+ly.add_uml_transition(s1, ch, '审核')
+ly.add_uml_transition(ch, s2, '', guard='通过')
+```
+
+## UML 时序图
+
+实现对象、生命线、激活条、同步/异步/返回消息。
+
+```python
+user = ly.add_seq_actor(80, 30, 30, '用户')
+svr = ly.add_seq_object(250, 30, 140, 40, 'loginService', 'LoginService')
+ly.add_seq_lifeline(80, 70, 500)
+ly.add_seq_sync(80, 120, 250, 120, 'login()')
+ly.add_seq_return(250, 160, 80, 160, 'result')
+```
+
+| 方法 | 消息类型 | 线型 |
+|------|----------|------|
+| `add_seq_sync()` | 同步消息 | 实线+实心箭头 |
+| `add_seq_async()` | 异步消息 | 实线+开放箭头 |
+| `add_seq_return()` | 返回消息 | 虚线+开放箭头 |
+| `add_seq_self()` | 自调用 | 半闭合矩形 |
+
+## UML 活动图 / 泳道图
+
+详见过渡段下方"泳道图（跨职能流程图）"章节。
 
 ## 与同类工具对比
 
