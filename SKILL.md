@@ -12,6 +12,11 @@ description: |
 Generate Visio-style software engineering diagrams via **draw.io Desktop**.
 Outputs `.drawio` (editable XML) + `.png` (max 1200px wide).
 
+**Skill files:**
+- `SKILL.md` — this file (skill instruction)
+- `README.md` — full Chinese documentation with API reference
+- `examples/er_diagram.py` — complete runnable ER diagram generating script (5 diagrams)
+
 **All generated files go into a `diagram/` subfolder** for centralized management.
 
 ## Visual Specification
@@ -426,8 +431,238 @@ The same HTML-table approach adapts to any software engineering diagram:
 - **ER/Data diagrams**: entities as tables → fields as rows → connectors as relationships
 - **UML Class diagrams**: class box = table header (stereotype) + attributes + methods
 - **Architecture diagrams**: component = table with header (name) + rows (endpoints/ports)
-- **Flowcharts**: use regular `rounded=1` rectangles (not tables) connected by edges
+- **Flowcharts / Activity diagrams**: use `add_swimlane()` for Visio-style cross-functional lanes, then place borderless text labels with `add_label_in_lane()`
 - **Deployment diagrams**: nodes as tables, artifacts as child rows
+
+## UML Activity Diagram Standards (OMG UML 2.5)
+
+Per the OMG UML 2.5 specification, activity diagrams use these shape conventions:
+
+| Element | Notation | draw.io shape |
+|---------|----------|---------------|
+| **Initial Node** | Solid filled circle | `add_uml_initial_node()` |
+| **Final Node** | Solid circle inside hollow outer circle (bullseye) | `add_uml_final_node()` |
+| **Action** | Rounded rectangle | `add_custom_box(..., style_extra='rounded=1;arcSize=8;')` |
+| **Decision / Merge** | Diamond | Diamond shape or text label with branching connectors |
+| **Control Flow** | Solid line arrow | `add_connector()` with default arrow |
+| **Partition (Swimlane)** | Vertical or horizontal container | `add_swimlane(horizontal=False)` for vertical lanes |
+
+### `add_uml_initial_node(x, y, size=16, parent='1', parent_x=0, parent_y=0)`
+
+UML Initial Node — solid black filled circle. Place at the start of the activity flow, inside a swimlane.
+
+| Param | Description |
+|-------|-------------|
+| `parent` | Swimlane ID to contain this node |
+| `parent_x`, `parent_y` | Absolute position of parent (for coordinate conversion) |
+
+```python
+start = ly.add_uml_initial_node(merchant_x + pool_w//2 - 8, merchant_y + head_h + 20, 16,
+                                 parent=lane_id, parent_x=merchant_x, parent_y=merchant_y)
+```
+
+### `add_uml_final_node(x, y, size=22, parent='1', parent_x=0, parent_y=0)`
+
+UML Final Node — solid black circle with thick outer ring (bullseye). Place at the end of the flow, optionally inside a swimlane.
+
+| Param | Description |
+|-------|-------------|
+| `parent` | Swimlane ID if inside a lane |
+| `parent_x`, `parent_y` | Absolute position of parent lane (for coordinate conversion) |
+
+```python
+final = ly.add_uml_final_node(abs_x, abs_y, 22, parent=lane_id,
+                               parent_x=lane_x, parent_y=lane_y)
+```
+
+## Swimlane (Cross-Functional Flowchart / UML Partition)
+
+Swimlanes group activities by responsible role, like Visio's cross-functional flowchart or UML 2.5 activity partitions.
+
+The draw.io swimlane shape supports two orientations:
+- **Horizontal** (`horizontal=True`, default): uses `swimlane` draw.io shape, header on the left, content to the right, lanes stack vertically
+- **Vertical** (`horizontal=False`): renders as two rounded rectangles (pool body + header bar at top). Tall pool (height > width) with role label in the header, lanes sit side by side. This corresponds to BPMN vertical pools or UML activity partitions.
+
+### Visual Layout (Vertical Pools)
+
+```
+┌──────────────────┬──────────────────┬──────────────────┐
+│  商家 (Merchant) │ 管理员 (Admin)   │   系统 (System)  │
+│  ┌───────┐      │                  │                  │
+│  │  ●    │      │                  │                  │  ← UML Initial
+│  ├───────┤      │                  │                  │
+│  │提交申请│──────│→ ┌───────┐      │                  │
+│  └───────┘      │  │审核申请│      │                  │
+│                 │  ├───────┤      │                  │
+│                 │  │审核通过│      │                  │
+│                 │  │  ？   │      │                  │
+│                 │  └─┬──┬──┘      │                  │
+│                 │    │  │         │                  │
+│                 │ 通过│  │驳回    │                  │
+│                 │    │  └─────────│→┌───────┐       │
+│                 │    │            │ │驳回申请│       │
+│                 │    │            │ ├───────┤       │
+│                 │    └────────────│→│自动执行│       │
+│                 │                 │ ├───────┤       │
+│                 │                 │ │流程结束│       │
+│                 │                 │ ├───────┤       │
+│                 │                 │ │   ◎   │       │  ← UML Final
+│                 │                 │ └───────┘       │
+└──────────────────┴──────────────────┴──────────────────┘
+```
+
+### EntityLayout API for Swimlanes
+
+### Visual Layout
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 商家 (Merchant)                                          │  ← swimlane, colored header band
+│  ┌──────────────┐                                        │
+│  │  提交申请     │   ← borderless text label in lane     │
+│  └─────┬────────┘                                        │
+│        │ (arrow crosses lane boundary)                   │
+├────────┼────────────────────────────────────────────────┤
+│ 管理员 (Admin)                                           │  ← different lane
+│  ┌──────┴──────────┐  ┌──────────────┐                  │
+│  │  审核申请        │→│  审核通过？   │                  │
+│  └─────────────────┘  └──────┬───────┘                  │
+│                              │                           │
+├──────────────────────────────┼──────────────────────────┤
+│ 系统 (System)                                          │
+│                  ┌───────────┴───────────┐              │
+│                  │  自动执行业务 / 驳回   │              │
+│                  └───────────────────────┘              │
+└─────────────────────────────────────────────────────────┘
+```
+
+### EntityLayout API for Swimlanes
+
+#### `add_swimlane(x, y, w, h, label, color='#E8F0FE', header_size=50, horizontal=True)`
+
+Creates a swimlane container (UML 2.5 partition / BPMN pool).
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `x`, `y` | int | — | Absolute top-left position |
+| `w`, `h` | int | — | Width and height of the swimlane |
+| `label` | str | — | Role name displayed in header |
+| `color` | str | `'#E8F0FE'` | Fill color (e.g., `'#FFF3CD'` for yellow) |
+| `header_size` | int | `50` | Width (horizontal) or height (vertical) of the header band |
+| `horizontal` | bool | `True` | `True` = band (header left); `False` = vertical pool (header top, lanes side-by-side) |
+
+**Returns**: entity ID
+
+- Use `horizontal=True` for standard swimlane diagrams (lanes stacked top-to-bottom).
+- Use `horizontal=False` for UML activity diagram partitions / BPMN vertical pools (lanes placed left-to-right, each taller than wide).
+
+**Returns**: entity ID (for connectors and labels)
+
+```python
+# Three horizontal swimlanes stack vertically (horizontal=True, default)
+lane_w = 900; lane_h = 110; gap = 8
+merchant = ly.add_swimlane(30, 30, lane_w, lane_h, '商家 (Merchant)', color='#FFF3CD')
+admin    = ly.add_swimlane(30, 30+lane_h+gap, lane_w, lane_h, '管理员 (Admin)', color='#E8F0FE')
+system   = ly.add_swimlane(30, 30+2*(lane_h+gap), lane_w, lane_h, '系统 (System)', color='#D4EDDA')
+
+# Three vertical pools side by side (horizontal=False)
+x0 = 40; lane_w = 240; lane_h = 520; gap = 20
+merchant = ly.add_swimlane(x0, 80, lane_w, lane_h, '商家 (Merchant)',
+                            color='#FFF3CD', header_size=50, horizontal=False)
+admin    = ly.add_swimlane(x0+lane_w+gap, 80, lane_w, lane_h, '管理员 (Admin)',
+                            color='#E8F0FE', header_size=50, horizontal=False)
+system   = ly.add_swimlane(x0+2*(lane_w+gap), 80, lane_w, lane_h, '系统 (System)',
+                            color='#D4EDDA', header_size=50, horizontal=False)
+```
+
+#### `add_label_in_lane(lane_id, lane_x, lane_y, x_rel, y_rel, w, h, text, font_size=11, bold=False, color='#333333')`
+
+Adds a **borderless text label** inside a swimlane. The label has no visible rectangle outline; its visual boundary is the parent swimlane's container.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `lane_id` | str | — | Entity ID of the swimlane from `add_swimlane()` |
+| `lane_x`, `lane_y` | int | — | Absolute position of the swimlane (for auto-computing absolute position) |
+| `x_rel`, `y_rel` | int | — | Position RELATIVE to the swimlane's top-left |
+| `w`, `h` | int | — | Size of the text label's clickable area |
+| `text` | str | — | Display text |
+| `font_size` | int | `11` | Font size in px |
+| `bold` | bool | `False` | Bold text |
+| `color` | str | `'#333333'` | Text color |
+
+**Important**: Labels inside swimlanes are **borderless** — they have no `strokeColor` or `fillColor`. Their visual "frame" is the swimlane container itself. The EntityLayout still tracks their absolute bounding box for obstacle-aware connector routing.
+
+Labels are **automatically clamped** to stay within the pool's content area (below the header, above the bottom, and within horizontal padding). This ensures all entities remain inside their parent swimlane.
+
+Use the `parent` parameter on `add_uml_initial_node()` and `add_uml_final_node()` to keep start/end circles inside a pool, with `parent_x/parent_y` being the pool's absolute position for coordinate conversion.
+
+```python
+m1 = ly.add_label_in_lane(merchant, 30, 30, 80, 35, 140, 36,
+                           '提交申请', bold=True, color='#8B6914')
+a1 = ly.add_label_in_lane(admin, 30, 148, 320, 35, 140, 36,
+                           '审核申请', bold=True, color='#1A5C8A')
+```
+
+#### Connectors Between Swimlanes
+
+Connectors between labels in different swimlanes work exactly like normal connectors. The routing algorithm treats the lane containers as obstacles (if needed) and routes around them.
+
+```python
+# Cross-lane connector (merchant → admin)
+ly.add_connector(m1, a1, label='提交', sx=1, sy=0.5, tx=0, ty=0.5)
+# Within-lane connector (admin → admin)
+ly.add_connector(a1, a2, label='审核完成', sx=1, sy=0.5, tx=0, ty=0.5)
+```
+
+### UML Activity Diagram Example (Vertical Swimlanes)
+
+```python
+def activity_diagram_example():
+    """UML activity diagram with 3 vertical pools and initial/final nodes."""
+    ly = EntityLayout()
+    x0, lane_w, lane_h, gap = 40, 240, 520, 20
+    head_h = 50
+
+    # Three vertical lanes side by side
+    merchant = ly.add_swimlane(x0, 80, lane_w, lane_h, '商家 (Merchant)',
+                                color='#FFF3CD', header_size=head_h, horizontal=False)
+    admin = ly.add_swimlane(x0+lane_w+gap, 80, lane_w, lane_h, '管理员 (Admin)',
+                             color='#E8F0FE', header_size=head_h, horizontal=False)
+    system = ly.add_swimlane(x0+2*(lane_w+gap), 80, lane_w, lane_h, '系统 (System)',
+                              color='#D4EDDA', header_size=head_h, horizontal=False)
+
+    # UML Initial Node (solid circle) — above merchant lane
+    init = ly.add_uml_initial_node(x0 + lane_w//2 - 9, 80 - 36, 18)
+
+    # Borderless activity labels inside each lane
+    m1 = ly.add_label_in_lane(merchant, x0, 80, 60, 80, 140, 36,
+                               '提交申请', bold=True, color='#8B6914')
+    a1 = ly.add_label_in_lane(admin, x0+lane_w+gap, 80, 60, 80, 140, 36,
+                               '审核申请', bold=True, color='#1A5C8A')
+    a2 = ly.add_label_in_lane(admin, x0+lane_w+gap, 80, 60, 180, 140, 36,
+                               '审核通过？', bold=True, color='#8B6914')
+    s1 = ly.add_label_in_lane(system, x0+2*(lane_w+gap), 80, 60, 80, 140, 36,
+                               '自动执行业务', bold=True, color='#1A6B1A')
+    s2 = ly.add_label_in_lane(system, x0+2*(lane_w+gap), 80, 60, 380, 80, 36,
+                               '流程结束', bold=False, color='#666666')
+
+    # UML Final Node (bullseye) — inside system lane bottom
+    sys_x = x0 + 2*(lane_w+gap)
+    final = ly.add_uml_final_node(sys_x + lane_w//2 - 11, 80 + lane_h - 30,
+                                   22, parent=system, parent_x=sys_x, parent_y=80)
+    # Connectors
+    ly.add_connector(init, m1, sx=0.5, sy=1, tx=0.5, ty=0)
+    ly.add_connector(m1, a1, label='提交', sx=1, sy=0.5, tx=0, ty=0.5)
+    ly.add_connector(a1, a2, label='审核完成', sx=0.5, sy=1, tx=0.5, ty=0)
+    ly.add_connector(a2, s1, label='通过', sx=1, sy=1, tx=0.5, ty=0)
+    ly.add_connector(s1, s2, label='执行完成', sx=0.5, sy=1, tx=0.5, ty=0)
+    ly.add_connector(s2, final, sx=0.5, sy=1, tx=0.5, ty=0)
+    ly.export('uml-activity', 'review-activity')
+```
+
+### Validation Note
+
+The `validate()` method will skip parent-child overlaps (labels inside swimlanes, final nodes inside lanes) automatically. These are expected and harmless.
 
 ## Layout Pattern Reference
 
@@ -440,6 +675,9 @@ Choose the right layout pattern based on relationship topology:
 | **Dual lane** | Two `column_y()` chains at diff y | Two independent paths with shared source+target |
 | **Column grid** | Row-aligned via `max_rows` + `column_y()` | Global ER diagrams with 8+ tables |
 | **Hub-and-spoke** | Manual placement around center | Star topology |
+| **Swimlane (horizontal)** | `add_swimlane(horizontal=True)` | Flowchart activities by role, lanes stacked top→bottom |
+| **Swimlane (vertical pool)** | `add_swimlane(horizontal=False)` | UML activity partitions / BPMN pools, lanes placed left→right |
+| **UML Activity** | vertical pools + initial/final nodes | UML 2.5 activity diagrams with solid circle start/end |
 
 ## Visual Style Reference
 
@@ -457,8 +695,19 @@ Choose the right layout pattern based on relationship topology:
                1 n                  ← bold cardinality text
 ```
 
+## Local Files
+
+| File | Description |
+|------|-------------|
+| `README.md` | Full Chinese documentation with API reference, examples, troubleshooting |
+| `examples/er_diagram.py` | Runnable script that generates 5 ER diagrams (run: `python examples/er_diagram.py`) |
+
 ## Dependencies
 
 - **draw.io Desktop** (free): https://github.com/jgraph/drawio-desktop/releases
 - **Python 3.10+** (stdlib only: `os`, `subprocess`, `xml.sax.saxutils`)
 - **No pip packages required**
+
+---
+
+**GitHub**: https://github.com/getfunWindz/visio-style-diagram
